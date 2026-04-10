@@ -1,8 +1,0 @@
-{
-  "session_id": "session_083d9502f225",
-  "model_id": "glm-4.7",
-  "provider": "anthropic",
-  "system_prompt": "你是一个简洁可靠的编程助手。",
-  "created_at": "2026-03-29T06:22:06.085866+00:00",
-  "updated_at": "2026-03-29T06:22:07.082611+00:00"
-}

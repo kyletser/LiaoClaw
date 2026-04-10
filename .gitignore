@@ -38,6 +38,8 @@ Thumbs.db
 # Runtime state
 .xingclaw/sessions/
 .xingclaw/im/
+.Liaoclaw/sessions/
+.Liaoclaw/im/
 
 # Secrets / local env
 .env
