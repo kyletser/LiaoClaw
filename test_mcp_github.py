@@ -30,11 +30,11 @@ async def test_github():
         for t in tools[:5]:
             print(f"  - {t.get('name')}")
         
-        print("\n[2] Calling list_repositories...")
+        print("\n[2] Trying get_file_contents...")
         result = await client.call_tool(
             server="github",
-            tool="list_repositories",
-            arguments={"per_page": 5}
+            tool="get_file_contents",
+            arguments={"owner": "kyletser", "repo": "LiaoClaw", "path": "README.md"}
         )
         print(f"Result: {result}")
         
