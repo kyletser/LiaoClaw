@@ -100,6 +100,15 @@ def _normalize_mcp_result(value: Any) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="ignore")
     if isinstance(value, dict):
+        # 处理 FastMCP 返回的格式 {"content": [{"type": "text", "text": "..."}], ...}
+        if "content" in value and isinstance(value["content"], list):
+            text_parts = []
+            for item in value["content"]:
+                if isinstance(item, dict) and "text" in item:
+                    text_parts.append(item["text"])
+            if text_parts:
+                return "\n".join(text_parts)
+        # 处理其他 dict
         return str(value)
     if isinstance(value, list):
         return "\n".join(str(x) for x in value)

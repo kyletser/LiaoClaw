@@ -165,6 +165,8 @@ class AgentSession:
 
     def close(self) -> None:
         self._unsubscribe()
+        # Note: MCP client cleanup is handled by the subprocess being terminated on process exit
+        # No explicit cleanup needed here to avoid asyncio event loop issues
 
     def list_entry_ids(self) -> list[str]:
         return self.store.list_entry_ids()

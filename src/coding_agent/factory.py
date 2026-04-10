@@ -5,6 +5,7 @@ coding_agent 工厂入口。
 """
 
 from pathlib import Path
+import asyncio
 import inspect
 from typing import Any, Awaitable, Callable
 
@@ -20,6 +21,22 @@ from .resources import WorkspaceResourceLoader
 from .session_store import SessionStore
 from .system_prompt import SystemPromptBuildOptions, build_system_prompt
 from .types import AgentSessionOptions, CreateAgentSessionOptions
+
+
+def _create_mcp_client_sync(mcp_servers: list[dict[str, Any]]) -> Any:
+    """Synchronously create MCP client - runs in thread pool to avoid blocking."""
+    import concurrent.futures
+    
+    def _run_async():
+        from ai.mcp_client import create_mcp_client_from_config
+        return asyncio.run(create_mcp_client_from_config(mcp_servers))
+    
+    try:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(_run_async)
+            return future.result(timeout=30)
+    except Exception:
+        return None
 
 
 def _canonical_tool_names(tools) -> list[str]:
@@ -218,7 +235,20 @@ def create_agent_session(options: AgentSessionOptions | CreateAgentSessionOption
     mcp_servers = options.mcp_servers
     if mcp_servers is None and resources and resources.settings.mcp_servers is not None:
         mcp_servers = resources.settings.mcp_servers
-    mcp_tools = create_mcp_proxy_tools(parse_mcp_tool_configs(mcp_servers), client=options.mcp_client)
+    
+    # Create MCP client from config (synchronous helper)
+    mcp_client = options.mcp_client
+    if mcp_client is None and mcp_servers:
+        try:
+            from ai.mcp_client import create_mcp_client_from_config
+            # Run async initialization synchronously
+            mcp_client = _create_mcp_client_sync(mcp_servers)
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to create MCP client: {e}")
+            mcp_client = None
+    
+    mcp_tools = create_mcp_proxy_tools(parse_mcp_tool_configs(mcp_servers), client=mcp_client)
 
     builtin_enabled = options.enabled_builtin_tools
     if builtin_enabled is None and resources:
@@ -333,7 +363,7 @@ def create_agent_session(options: AgentSessionOptions | CreateAgentSessionOption
         skill_paths=skill_paths,
         prompt_debug_sources=prompt_debug_sources,
         mcp_servers=mcp_servers,
-        mcp_client=options.mcp_client,
+        mcp_client=mcp_client,
         extension_commands={**options.extension_commands, **loaded_skills.commands, **loaded_extensions.commands},
         before_prompt_hooks=before_prompt_hooks,
         after_prompt_hooks=after_prompt_hooks,

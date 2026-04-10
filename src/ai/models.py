@@ -8,17 +8,6 @@ from .types import Model
 
 _MODELS: dict[str, dict[str, Model]] = {
     "anthropic": {
-        "claude-sonnet-4-5": Model(
-            id="claude-sonnet-4-5",
-            name="Claude Sonnet 4.5",
-            api="anthropic-messages",
-            provider="anthropic",
-            base_url="https://api.anthropic.com",
-            reasoning=True,
-            input=["text", "image"],
-            context_window=200_000,
-            max_tokens=8192,
-        ),
         "glm-4.5-air": Model(
             id="glm-4.5-air",
             name="GLM-4.5 Air",

@@ -1,0 +1,59 @@
+{
+  "provider": "anthropic",
+  "model_id": "glm-4.5-air",
+  "mcp_servers": [
+    {
+      "name": "weather",
+      "command": ["python"],
+      "args": ["mcp_servers/weather_server.py"],
+      "env": {},
+      "tools": [
+        {
+          "name": "get_weather",
+          "tool": "get_weather",
+          "description": "获取指定城市的当前天气和未来几天预报"
+        },
+        {
+          "name": "get_forecast",
+          "tool": "get_forecast",
+          "description": "获取指定城市的多日天气预报 (1-16天)"
+        }
+      ]
+    },
+    {
+      "name": "github",
+      "command": ["node", "C:\\Users\\廖晓平\\AppData\\Roaming\\npm\\node_modules\\@modelcontextprotocol\\server-github\\dist\\index.js"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+      },
+      "tools": [
+        {
+          "name": "github_search_repos",
+          "tool": "search_repositories",
+          "description": "搜索 GitHub 仓库"
+        },
+        {
+          "name": "github_get_file",
+          "tool": "get_file_contents",
+          "description": "获取仓库文件内容"
+        },
+        {
+          "name": "github_create_file",
+          "tool": "create_or_update_file",
+          "description": "创建或更新文件"
+        },
+        {
+          "name": "github_push",
+          "tool": "push_files",
+          "description": "推送文件到仓库"
+        },
+        {
+          "name": "github_create_repo",
+          "tool": "create_repository",
+          "description": "创建新仓库"
+        }
+      ]
+    }
+  ],
+  "enabled_builtin_tools": ["read", "ls", "grep", "find"]
+}

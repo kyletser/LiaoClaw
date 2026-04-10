@@ -107,6 +107,11 @@ async def run_interactive(
         bare = text.lstrip("/")
         if bare in exit_commands:
             output("Bye.")
+            # Try to close session gracefully
+            try:
+                session.close()
+            except Exception:
+                pass
             return
         if not text:
             continue
