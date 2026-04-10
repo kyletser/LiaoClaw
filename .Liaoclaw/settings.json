@@ -11,12 +11,12 @@
         {
           "name": "get_weather",
           "tool": "get_weather",
-          "description": "获取指定城市的当前天气和未来几天预报"
+          "description": "获取指定城市的当前天气。参数：city(城市名)，country(国家代码可选，如CN)"
         },
         {
           "name": "get_forecast",
           "tool": "get_forecast",
-          "description": "获取指定城市的多日天气预报 (1-16天)"
+          "description": "获取多日天气预报。参数：city(城市名)，days(天数1-16)"
         }
       ]
     },
@@ -28,29 +28,44 @@
       },
       "tools": [
         {
-          "name": "github_search_repos",
+          "name": "search_repos",
           "tool": "search_repositories",
-          "description": "搜索 GitHub 仓库"
+          "description": "搜索GitHub仓库。参数：query(搜索关键词)"
         },
         {
-          "name": "github_get_file",
+          "name": "get_file",
           "tool": "get_file_contents",
-          "description": "获取仓库文件内容"
+          "description": "获取仓库文件内容。参数：owner(仓库所有者)，repo(仓库名)，path(文件路径)"
         },
         {
-          "name": "github_create_file",
+          "name": "create_file",
           "tool": "create_or_update_file",
-          "description": "创建或更新文件"
+          "description": "创建或更新文件。参数：owner, repo, path, content, message"
         },
         {
-          "name": "github_push",
+          "name": "push_files",
           "tool": "push_files",
-          "description": "推送文件到仓库"
+          "description": "推送多个文件。参数：owner, repo, branch, files(数组)"
         },
         {
-          "name": "github_create_repo",
+          "name": "create_repo",
           "tool": "create_repository",
-          "description": "创建新仓库"
+          "description": "创建新仓库。参数：name, description, private"
+        },
+        {
+          "name": "list_issues",
+          "tool": "list_issues",
+          "description": "列出仓库Issue。参数：owner, repo, state(open/closed)"
+        },
+        {
+          "name": "create_issue",
+          "tool": "create_issue",
+          "description": "创建Issue。参数：owner, repo, title, body"
+        },
+        {
+          "name": "search_code",
+          "tool": "search_code",
+          "description": "搜索代码。参数：q(搜索语句)，repo(可选限制仓库)"
         }
       ]
     }
