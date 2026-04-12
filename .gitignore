@@ -38,6 +38,7 @@ Thumbs.db
 # Runtime state
 .Liaoclaw/sessions/
 .Liaoclaw/im/
+.Liaoclaw/settings.json
 
 # Secrets / local env
 .env
