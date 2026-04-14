@@ -78,10 +78,13 @@ OPENAI_API_KEY=sk-你的密钥
 pip install -e ".[dev]"
 
 # 方式一：CLI 交互模式（最简单的上手方式）
-python -m coding_agent --mode interactive --provider anthropic --model-id claude-sonnet-4-5
+python -m coding_agent --mode interactive --provider anthropic --model-id glm-4.5-air
 
 # 方式二：运行最小示例脚本
 python examples/quickstart.py
+
+# 方式三：启动前端 Web 控制台
+liaoclaw-web --provider anthropic --model-id glm-4.5-air --host 127.0.0.1 --port 8787
 ```
 
 **Windows 用户**可以直接用开发脚本：
@@ -91,7 +94,7 @@ python examples/quickstart.py
 .\dev.ps1 -Mode cli
 
 # IM 模式（需要先配置飞书凭据）
-.\dev.ps1 -Mode im
+.\dev.ps1 -Mode im -Transport longconn
 ```
 
 ### 4. 运行测试

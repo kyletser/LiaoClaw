@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiaoClaw 网页控制台</title>
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <div class="aurora aurora-a"></div>
+    <div class="aurora aurora-b"></div>
+
+    <main class="layout">
+      <section class="hero card reveal">
+        <p class="eyebrow">LiaoClaw 前端控制台</p>
+        <h1>编程 Agent 网页控制台</h1>
+        <p class="subtext">
+          在浏览器里直接与编程 Agent 对话。你可以发送任务、查看会话状态，并持续跟踪执行结果。
+        </p>
+      </section>
+
+      <section class="panel-grid reveal">
+        <article class="card stat">
+          <h2>会话</h2>
+          <p id="sessionId" class="stat-main">加载中...</p>
+          <p class="stat-sub" id="leafId">分支: -</p>
+        </article>
+        <article class="card stat">
+          <h2>消息数</h2>
+          <p id="messageCount" class="stat-main">0</p>
+          <p class="stat-sub">当前会话消息条数</p>
+        </article>
+        <article class="card stat">
+          <h2>累计 Token</h2>
+          <p id="tokenCount" class="stat-main">0</p>
+           <p class="stat-sub" id="tokenMeta">当前会话累计消耗</p>
+        </article>
+      </section>
+
+       <section class="card reveal toolbar">
+         <button id="continueBtn" type="button">继续生成</button>
+         <button id="newSessionBtn" type="button" class="ghost">新会话</button>
+         <button id="forkBtn" type="button" class="ghost">分叉会话</button>
+         <button id="refreshBtn" type="button" class="ghost">刷新状态</button>
+       </section>
+
+       <section class="card reveal session-panel">
+         <h2>会话分支</h2>
+         <div class="session-row">
+           <select id="entrySelect"></select>
+           <button id="switchEntryBtn" type="button" class="ghost">切换到选中分支</button>
+           <button id="reloadEntriesBtn" type="button" class="ghost">刷新分支</button>
+         </div>
+       </section>
+
+      <section class="card chat reveal">
+        <div id="chatLog" class="chat-log" aria-live="polite"></div>
+        <form id="chatForm" class="chat-input" autocomplete="off">
+          <label for="promptInput" class="sr-only">输入内容</label>
+          <textarea id="promptInput" rows="3" placeholder="请输入你希望 Agent 执行的编程任务..."></textarea>
+          <div class="actions">
+            <button id="sendBtn" type="submit">发送</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <template id="msgTpl">
+      <article class="msg">
+        <p class="msg-role"></p>
+        <p class="msg-body"></p>
+      </article>
+    </template>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

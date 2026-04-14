@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import tempfile
@@ -67,11 +68,11 @@ class CodingAgentStoreTests(unittest.TestCase):
                 CreateAgentSessionOptions(
                     workspace_dir=tmp_dir,
                     provider="anthropic",
-                    model_id="claude-sonnet-4-5",
+                    model_id="glm-4.5-air",
                     system_prompt="test",
                 )
             )
-            self.assertEqual(session.agent.state.model.id, "claude-sonnet-4-5")
+            self.assertEqual(session.agent.state.model.id, "glm-4.5-air")
             session.close()
 
     def test_factory_restore_from_meta(self) -> None:
@@ -118,7 +119,7 @@ class CodingAgentStoreTests(unittest.TestCase):
                     AssistantMessage(content=[TextContent(text="a3")]),
                 ]
             )
-            session._compact_context_if_needed()  # 测试私有策略入口
+            asyncio.run(session._compact_context_if_needed())  # 测试私有策略入口
 
             compacted = session.agent.state.messages
             self.assertEqual(len(compacted), 3)

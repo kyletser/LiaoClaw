@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 """
 内置模型表（第一阶段只放 Anthropic + OpenAI 标准）。

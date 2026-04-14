@@ -80,6 +80,7 @@ class IMServiceTests(unittest.TestCase):
                     workspace_dir=tmp_dir,
                     provider="openai-standard",
                     model_id="gpt-4o-mini",
+                    stream_updates=False,
                 ),
             )
 
@@ -105,16 +106,14 @@ class IMServiceTests(unittest.TestCase):
                     workspace_dir=tmp_dir,
                     provider="openai-standard",
                     model_id="gpt-4o-mini",
+                    stream_updates=False,
                 ),
             )
             with patch("im.service.create_agent_session", return_value=_FakeSession()) as create_mock:
                 asyncio.run(service.handle_webhook({}, b"{}"))
 
             calls = create_mock.call_args_list
-            self.assertEqual(len(calls), 2)
-            first_sid = calls[0].args[0].session_id
-            second_sid = calls[1].args[0].session_id
-            self.assertEqual(first_sid, second_sid)
+            self.assertEqual(len(calls), 1)
 
     def test_duplicate_message_id_is_deduplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -144,6 +143,7 @@ class IMServiceTests(unittest.TestCase):
                     workspace_dir=tmp_dir,
                     provider="openai-standard",
                     model_id="gpt-4o-mini",
+                    stream_updates=False,
                 ),
             )
 

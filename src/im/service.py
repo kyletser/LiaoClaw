@@ -292,7 +292,10 @@ class IMService:
             except Exception as exc:
                 logger.warning("stream update failed: %s", exc)
 
-        unsub = session.subscribe(_on_event)
+        unsub = None
+        subscribe = getattr(session, "subscribe", None)
+        if callable(subscribe):
+            unsub = subscribe(_on_event)
         try:
             await session.prompt(text)
             final_text = self._extract_last_assistant_text(session) or accumulated_text
@@ -300,7 +303,8 @@ class IMService:
             logger.exception("agent prompt failed: %s", exc)
             final_text = f"[IM bridge error] {exc}"
         finally:
-            unsub()
+            if callable(unsub):
+                unsub()
 
         if placeholder_id and hasattr(self.adapter, "update_text"):
             cost_line = ""
@@ -345,8 +349,8 @@ class IMService:
 
     @staticmethod
     def _format_cost(session: AgentSession) -> str:
-        usage = session.last_usage
-        if not usage:
+        usage = getattr(session, "last_usage", None)
+        if not isinstance(usage, dict) or not usage:
             return ""
         tokens = usage.get("total_tokens", 0)
         cost = usage.get("cost", {})

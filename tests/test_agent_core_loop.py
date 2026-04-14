@@ -59,7 +59,7 @@ def _build_stream_fn(final_messages: list[AssistantMessage]) -> Callable[..., _F
 
 
 def _make_config(**kwargs: Any) -> AgentLoopConfig:
-    model = get_model("anthropic", "claude-sonnet-4-5")
+    model = get_model("anthropic", "glm-4.5-air")
     defaults: dict[str, Any] = {
         "model": model,
         "convert_to_llm": lambda messages: messages,
