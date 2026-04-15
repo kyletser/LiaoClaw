@@ -38,6 +38,8 @@ class WorkspaceSettings:
     tool_snippets: Optional[dict[str, str]] = None
     extension_paths: Optional[list[str]] = None
     skill_paths: Optional[list[str]] = None
+    skills_load_extra_dirs: Optional[list[str]] = None
+    agents_default_skills: Optional[list[str]] = None
     prompt_debug_sources: Optional[bool] = None
     mcp_servers: Optional[list[dict[str, Any]]] = None
 
@@ -74,6 +76,10 @@ class WorkspaceResourceLoader:
         tool_execution = raw.get("tool_execution")
         if tool_execution not in {"parallel", "sequential"}:
             tool_execution = None
+        skills_cfg = raw.get("skills")
+        load_cfg = skills_cfg.get("load") if isinstance(skills_cfg, dict) else None
+        agents_cfg = raw.get("agents")
+        defaults_cfg = agents_cfg.get("defaults") if isinstance(agents_cfg, dict) else None
 
         return WorkspaceSettings(
             provider=raw.get("provider") if isinstance(raw.get("provider"), str) else None,
@@ -103,6 +109,8 @@ class WorkspaceResourceLoader:
             tool_snippets=self._to_string_map(raw.get("tool_snippets")),
             extension_paths=self._to_string_list(raw.get("extension_paths")),
             skill_paths=self._to_string_list(raw.get("skill_paths")),
+            skills_load_extra_dirs=self._to_string_list(load_cfg.get("extraDirs")) if isinstance(load_cfg, dict) else None,
+            agents_default_skills=self._to_string_list(defaults_cfg.get("skills")) if isinstance(defaults_cfg, dict) else None,
             prompt_debug_sources=raw.get("prompt_debug_sources")
             if isinstance(raw.get("prompt_debug_sources"), bool)
             else None,

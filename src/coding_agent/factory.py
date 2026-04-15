@@ -230,7 +230,20 @@ def create_agent_session(options: AgentSessionOptions | CreateAgentSessionOption
     skill_paths = options.skill_paths
     if skill_paths is None and resources and resources.settings.skill_paths is not None:
         skill_paths = resources.settings.skill_paths
-    loaded_skills = load_skills(workspace, configured_paths=skill_paths)
+    if resources and resources.settings.skills_load_extra_dirs:
+        merged_skill_paths = list(skill_paths or [])
+        for extra in resources.settings.skills_load_extra_dirs:
+            if extra not in merged_skill_paths:
+                merged_skill_paths.append(extra)
+        skill_paths = merged_skill_paths
+    allowed_skill_names = None
+    if resources and resources.settings.agents_default_skills is not None:
+        allowed_skill_names = set(resources.settings.agents_default_skills)
+    loaded_skills = load_skills(
+        workspace,
+        configured_paths=skill_paths,
+        allowed_skill_names=allowed_skill_names,
+    )
 
     mcp_servers = options.mcp_servers
     if mcp_servers is None and resources and resources.settings.mcp_servers is not None:

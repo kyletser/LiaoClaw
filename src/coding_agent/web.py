@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import mimetypes
 import os
@@ -26,6 +27,8 @@ from urllib.parse import parse_qs, urlparse
 from ai.overflow import estimate_context_tokens
 from ai.types import AssistantMessage, TextContent, ThinkingContent
 
+from .command_registry import format_commands_for_help, resolve_registered_command
+from .extensions.types import ExtensionCommandContext
 from .factory import create_agent_session
 from .types import CreateAgentSessionOptions
 
@@ -481,6 +484,47 @@ def _create_handler(state: WebServerState):
                 "tokens": _compute_token_state(state.session),
             }
 
+        def _build_command_response(self, reply: str) -> dict:
+            return {
+                "status": "ok",
+                "session_id": state.session.session_id,
+                "leaf_id": state.session.get_leaf_id(),
+                "reply": reply,
+                "reply_timestamp": int(time.time() * 1000),
+                "stop_reason": "command",
+                "error_message": None,
+                "last_usage": state.session.last_usage,
+                "tokens": _compute_token_state(state.session),
+            }
+
+        def _try_handle_slash_command(self, text: str) -> str | None:
+            if not text.startswith("/"):
+                return None
+            cmd, _, rest = text.partition(" ")
+            arg = rest.strip()
+
+            if cmd == "/help":
+                return format_commands_for_help(state.session)
+            if cmd == "/session":
+                return f"session_id={state.session.session_id} leaf_id={state.session.get_leaf_id()}"
+
+            reg = resolve_registered_command(state.session, cmd)
+            if reg is None:
+                return None
+
+            value = reg.handler(
+                ExtensionCommandContext(
+                    name=reg.name,
+                    args=[part for part in arg.split(" ") if part],
+                    raw_text=text,
+                    session=state.session,
+                    message=None,
+                )
+            )
+            if inspect.isawaitable(value):
+                value = asyncio.run(value)
+            return str(value) if value else ""
+
         def _handle_prompt(self) -> None:
             try:
                 body = _safe_read_json(self)
@@ -490,6 +534,10 @@ def _create_handler(state: WebServerState):
                     return
 
                 with state.lock:
+                    cmd_reply = self._try_handle_slash_command(text)
+                    if cmd_reply is not None:
+                        self._send_json(HTTPStatus.OK, self._build_command_response(cmd_reply))
+                        return
                     asyncio.run(state.session.prompt(text))
 
                 final_assistant = next(

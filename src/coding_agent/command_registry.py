@@ -30,7 +30,7 @@ def builtin_commands() -> list[RuntimeCommand]:
 
 def list_runtime_commands(session: AgentSession) -> list[RuntimeCommand]:
     items: dict[str, RuntimeCommand] = {cmd.name: cmd for cmd in builtin_commands()}
-    for cmd in session.extension_commands.values():
+    for cmd in getattr(session, "extension_commands", {}).values():
         items[cmd.name] = RuntimeCommand(
             name=cmd.name,
             description=cmd.description or "扩展命令",
@@ -47,4 +47,5 @@ def format_commands_for_help(session: AgentSession) -> str:
 
 
 def resolve_registered_command(session: AgentSession, name: str) -> RegisteredCommand | None:
-    return session.extension_commands.get(name.strip().lstrip("/"))
+    commands = getattr(session, "extension_commands", {})
+    return commands.get(name.strip().lstrip("/"))

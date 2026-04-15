@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
 
 from coding_agent.builtin_tools import create_builtin_tools
 from coding_agent.factory import create_agent_session
+from coding_agent.extensions.types import ExtensionCommandContext
 from coding_agent.resources import WorkspaceResourceLoader
 from coding_agent.types import CreateAgentSessionOptions
 from ai.types import AssistantMessage, ToolCall
@@ -221,6 +222,156 @@ class CodingAgentResourceTests(unittest.TestCase):
             prompt = session.agent.state.system_prompt
             self.assertIn("Prompt Sources", prompt)
             self.assertIn("skill command conflict", prompt)
+            session.close()
+
+    def test_skill_directory_style_skill_md_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_file = Path(tmp_dir) / ".liaoclaw" / "skills" / "review" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True, exist_ok=True)
+            skill_file.write_text(
+                "---\nname: 审查目录技能\ncommand: review-dir\ndescription: 目录式 skill\n---\n按目录式技能执行。",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                )
+            )
+            self.assertIn("review-dir", session.extension_commands)
+            prompt = session.agent.state.system_prompt
+            self.assertIn("技能约束（审查目录技能）", prompt)
+            self.assertIn("## Skill: 审查目录技能", prompt)
+            self.assertIn("按目录式技能执行", prompt)
+            session.close()
+
+    def test_skill_uppercase_liaoclaw_dir_is_compatible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_dir = Path(tmp_dir) / ".Liaoclaw" / "skills"
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "upper.md").write_text(
+                "---\nname: 大写目录技能\ncommand: upper-skill\n---\n兼容大写目录。",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                )
+            )
+            self.assertIn("upper-skill", session.extension_commands)
+            session.close()
+
+    def test_skill_frontmatter_with_bom_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_file = Path(tmp_dir) / "skills" / "bom_skill" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True, exist_ok=True)
+            skill_file.write_text(
+                "\ufeff---\nname: bom_skill\ndescription: bom compatible\ncommand: bom-cmd\n---\n# BOM Skill\nBOM frontmatter.",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                )
+            )
+            self.assertIn("bom-cmd", session.extension_commands)
+            session.close()
+
+    def test_openclaw_workspace_skill_directory_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_file = Path(tmp_dir) / "skills" / "hello_world" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True, exist_ok=True)
+            skill_file.write_text(
+                "---\nname: hello_world\ndescription: say hello\n---\n# Hello\nSay hello.",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                )
+            )
+            self.assertIn("hello_world", session.extension_commands)
+            session.close()
+
+    def test_openclaw_disable_model_invocation_and_user_invocable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_file = Path(tmp_dir) / "skills" / "hidden_skill" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True, exist_ok=True)
+            skill_file.write_text(
+                "---\nname: hidden_skill\ndescription: hidden from model\nuser-invocable: true\ndisable-model-invocation: true\n---\n# Hidden\nDo not inject to model.",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                )
+            )
+            self.assertIn("hidden_skill", session.extension_commands)
+            prompt = session.agent.state.system_prompt
+            self.assertNotIn("## Skill: hidden_skill", prompt)
+            session.close()
+
+    def test_openclaw_requires_bins_filters_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_file = Path(tmp_dir) / "skills" / "needs_bin" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True, exist_ok=True)
+            skill_file.write_text(
+                "---\nname: needs_bin\ndescription: requires missing bin\nmetadata:\n  openclaw:\n    requires:\n      bins:\n        - definitely_missing_bin_12345\n---\n# Needs Bin\nShould be skipped.",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                    prompt_debug_sources=True,
+                )
+            )
+            self.assertNotIn("needs_bin", session.extension_commands)
+            self.assertIn("skill skipped:", session.agent.state.system_prompt)
+            session.close()
+
+    def test_openclaw_command_dispatch_tool_works(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            skill_file = Path(tmp_dir) / "skills" / "echo_cmd" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True, exist_ok=True)
+            skill_file.write_text(
+                "---\nname: echo_cmd\ndescription: dispatch to bash\ncommand: echo-cmd\ncommand-dispatch: tool\ncommand-tool: bash\ncommand-arg-mode: raw\n---\n# Echo Cmd\nDispatch args to bash tool.",
+                encoding="utf-8",
+            )
+            session = create_agent_session(
+                CreateAgentSessionOptions(
+                    workspace_dir=tmp_dir,
+                    provider="openai-standard",
+                    model_id="gpt-4o-mini",
+                    read_only_mode=False,
+                    block_dangerous_bash=False,
+                    enabled_builtin_tools=["bash"],
+                )
+            )
+            cmd = session.extension_commands.get("echo-cmd")
+            self.assertIsNotNone(cmd)
+            value = cmd.handler(
+                ExtensionCommandContext(
+                    name="echo-cmd",
+                    args=["echo", "hello-skill-dispatch"],
+                    raw_text="/echo-cmd echo hello-skill-dispatch",
+                    session=session,
+                    message=None,
+                )
+            )
+            if asyncio.iscoroutine(value):
+                value = asyncio.run(value)
+            self.assertIn("hello-skill-dispatch", str(value))
             session.close()
 
     def test_extension_registers_tool_and_hooks(self) -> None:

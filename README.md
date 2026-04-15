@@ -108,6 +108,36 @@ pytest tests/ -v
 如果你要把整个项目直接发给别人，建议对方按这份手册操作：  
 `docs/05_交付与运行/01_项目交付运行手册.md`
 
+### 6. Skills 调用（CLI / IM / Web）
+
+先在交互界面输入 `/help` 查看技能命令，然后用 `/<command>` 触发，例如：
+
+```text
+/quick-check
+```
+
+说明：当前 `/<command>` 会返回技能模板文本，随后再继续发送你的业务请求即可。
+
+OpenClaw 风格目录推荐：
+
+```text
+skills/
+  quick_check/
+    SKILL.md
+```
+
+快速测试：
+
+1. 仓库已自带 `skills/quick_check/SKILL.md`。
+2. 启动 CLI 后执行 `/help`、`/quick-check`。
+3. 启动 Web 后同样执行 `/help`、`/quick-check`。
+4. 上述命令仅验证 skills 分发，不会触发模型请求。
+
+手动激活提示：
+
+1. CLI 修改 skills 后请重启 `liaoclaw` 进程。
+2. Web 可点“新会话”或重启 `liaoclaw-web`。
+
 ## 项目结构一览
 
 ```

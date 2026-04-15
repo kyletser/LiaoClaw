@@ -39,6 +39,9 @@ Thumbs.db
 .Liaoclaw/sessions/
 .Liaoclaw/im/
 .Liaoclaw/settings.json
+.liaoclaw/sessions/
+.liaoclaw/im/
+.liaoclaw/settings.json
 
 # Secrets / local env
 .env

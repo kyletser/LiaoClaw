@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ai.types import AssistantMessage, TextContent, UserMessage  # noqa: E402
+from coding_agent.extensions.types import RegisteredCommand  # noqa: E402
 from coding_agent.web import WebServerOptions, create_server  # noqa: E402
 
 
@@ -22,6 +23,14 @@ class _FakeSession:
         self.session_id = "session-web-test"
         self.messages = []
         self._leaf_id = "leaf-1"
+        self.extension_commands = {
+            "demo-skill": RegisteredCommand(
+                name="demo-skill",
+                description="demo",
+                source="skill",
+                handler=lambda ctx: f"skill-invoked:{ctx.raw_text}",
+            )
+        }
 
     @property
     def cumulative_usage(self) -> dict:
@@ -160,6 +169,34 @@ class CodingAgentWebTests(unittest.TestCase):
 
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["reply"], "echo: hello web")
+
+    def test_prompt_endpoint_supports_slash_help(self) -> None:
+        req = request.Request(
+            f"{self.base_url}/api/prompt",
+            data=json.dumps({"text": "/help"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            payload = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(payload["status"], "ok")
+        self.assertIn("/help", payload["reply"])
+        self.assertEqual(payload["stop_reason"], "command")
+
+    def test_prompt_endpoint_supports_slash_skill_command(self) -> None:
+        req = request.Request(
+            f"{self.base_url}/api/prompt",
+            data=json.dumps({"text": "/demo-skill arg1"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            payload = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(payload["status"], "ok")
+        self.assertIn("skill-invoked:/demo-skill arg1", payload["reply"])
+        self.assertEqual(payload["stop_reason"], "command")
 
     def test_prompt_endpoint_returns_non_empty_fallback_when_model_has_no_text(self) -> None:
         options = WebServerOptions(
