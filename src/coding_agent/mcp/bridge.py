@@ -68,14 +68,14 @@ def create_mcp_proxy_tools(configs: list[MCPToolConfig], client: MCPClient | Non
             if client is None:
                 return AgentToolResult(
                     content=[TextContent(text=f"MCP bridge unavailable for `{_cfg.name}`")],
-                    is_error=True,
+                    details={"error": True, "server": _cfg.server, "tool": _cfg.tool},
                 )
             try:
                 result = await client.call_tool(_cfg.server, _cfg.tool, args)
             except Exception as exc:  # pragma: no cover - adapter-specific
                 return AgentToolResult(
                     content=[TextContent(text=f"MCP call failed `{_cfg.server}.{_cfg.tool}`: {exc}")],
-                    is_error=True,
+                    details={"error": True, "server": _cfg.server, "tool": _cfg.tool},
                 )
             return AgentToolResult(
                 content=[TextContent(text=_normalize_mcp_result(result))],

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 """
-轻量 Web UI 服务：
-- 提供静态前端页面
-- 暴露基础 JSON API（health/state/prompt）
+闁哄鍋涢…鐑藉闯?Web UI 闂佸搫鐗嗙粔瀛樻叏閻斿吋鏅?
+- 闂佸湱绮崝鎺旀閻㈠憡顥堟繛鍡樺姀閸嬫挻鎷呯粙娆炬瀫缂備焦妫忛崹鍫曞Υ婢舵劖顥?
+- 闂佸搫妫欓幐鍐诧耿閸洖鏄ラ柧蹇氼嚃閺€?JSON API闂佹寧绋戝婕瀉lth/state/prompt闂?
 """
 
 import argparse
@@ -13,6 +13,8 @@ import mimetypes
 import os
 import re
 import threading
+import queue
+import time
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -48,10 +50,15 @@ class WebServerState:
         self.session = session
         self.options = options
         self.lock = threading.Lock()
+        self.stream_clients: set[queue.Queue] = set()
+        self.stream_lock = threading.Lock()
+        self._session_unsubscribe = self._bind_session_event_listener(self.session)
 
     def replace_session(self, session) -> None:
         old = self.session
+        self._session_unsubscribe()
         self.session = session
+        self._session_unsubscribe = self._bind_session_event_listener(self.session)
         old.close()
 
     def create_fresh_session(self, *, session_id: str | None = None):
@@ -69,6 +76,52 @@ class WebServerState:
                 load_workspace_resources=not self.options.disable_workspace_resources,
             )
         )
+
+    def _on_session_event(self, event) -> None:
+        event_type = str(event.get("type", ""))
+        if event_type not in {
+            "tool_execution_start",
+            "tool_execution_end",
+            "auto_retry_start",
+            "context_compacted",
+        }:
+            return
+        self.publish_stream_event(
+            {
+                "type": event_type,
+                "toolName": event.get("toolName"),
+                "attempt": event.get("attempt"),
+                "max_attempts": event.get("max_attempts"),
+                "delay_ms": event.get("delay_ms"),
+                "reason": event.get("reason"),
+                "timestamp": event.get("timestamp"),
+            }
+        )
+
+    def _bind_session_event_listener(self, session):
+        subscribe = getattr(session, "subscribe", None)
+        if callable(subscribe):
+            return subscribe(self._on_session_event)
+        return lambda: None
+
+    def publish_stream_event(self, payload: dict) -> None:
+        with self.stream_lock:
+            clients = list(self.stream_clients)
+        for q in clients:
+            try:
+                q.put_nowait(payload)
+            except queue.Full:
+                continue
+
+    def add_stream_client(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=200)
+        with self.stream_lock:
+            self.stream_clients.add(q)
+        return q
+
+    def remove_stream_client(self, q: queue.Queue) -> None:
+        with self.stream_lock:
+            self.stream_clients.discard(q)
 
 
 def _strip_wrapped_quotes(value: str) -> str:
@@ -205,6 +258,109 @@ def _compute_token_state(session) -> dict:
     }
 
 
+def _extract_text_from_message_dict(message_data: dict) -> str:
+    content = message_data.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(str(block.get("text", "")) for block in content if isinstance(block, dict))
+    return ""
+
+
+def _collect_api_messages(session, *, limit: int) -> list[dict]:
+    store = getattr(session, "store", None)
+    leaf_id = session.get_leaf_id() if hasattr(session, "get_leaf_id") else None
+    if store is not None and hasattr(store, "load_session_message_entries"):
+        entries = store.load_session_message_entries(leaf_id=leaf_id)
+        rows = entries[-limit:] if limit > 0 else entries
+        out: list[dict] = []
+        for entry in rows:
+            message_data = entry.get("message")
+            if not isinstance(message_data, dict):
+                continue
+            role = str(message_data.get("role", "unknown"))
+            out.append(
+                {
+                    "role": role,
+                    "text": _extract_text_from_message_dict(message_data).strip(),
+                    "timestamp": entry.get("timestamp"),
+                }
+            )
+        return out
+
+    messages = session.messages[-limit:] if limit > 0 else list(session.messages)
+    out: list[dict] = []
+    for msg in messages:
+        role = getattr(msg, "role", "unknown")
+        text = ""
+        if isinstance(msg, AssistantMessage):
+            text = _extract_assistant_text(msg)
+        elif hasattr(msg, "content"):
+            content = getattr(msg, "content", "")
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                text = "".join(block.text for block in content if isinstance(block, TextContent))
+        out.append(
+            {
+                "role": role,
+                "text": (text or "").strip(),
+                "timestamp": getattr(msg, "timestamp", None),
+            }
+        )
+    return out
+
+
+def _list_persisted_sessions(workspace: Path) -> list[dict]:
+    sessions_root = workspace / ".liaoclaw" / "sessions"
+    if not sessions_root.exists() or not sessions_root.is_dir():
+        return []
+
+    out: list[dict] = []
+    for item in sessions_root.iterdir():
+        if not item.is_dir():
+            continue
+        session_id = item.name
+        meta_file = item / "meta.json"
+        session_file = item / "session.jsonl"
+        meta: dict = {}
+        if meta_file.exists() and meta_file.is_file():
+            try:
+                parsed = json.loads(meta_file.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict):
+                    meta = parsed
+            except Exception:
+                meta = {}
+
+        message_count = 0
+        if session_file.exists() and session_file.is_file():
+            try:
+                for line in session_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    payload = json.loads(line)
+                    if isinstance(payload, dict) and payload.get("type") == "message":
+                        message_count += 1
+            except Exception:
+                message_count = 0
+
+        out.append(
+            {
+                "session_id": session_id,
+                "created_at": meta.get("created_at"),
+                "updated_at": meta.get("updated_at"),
+                "model_id": meta.get("model_id"),
+                "provider": meta.get("provider"),
+                "leaf_id": meta.get("leaf_id"),
+                "message_count": message_count,
+            }
+        )
+
+    out.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
+    return out
+
+
 def _create_handler(state: WebServerState):
     static_dir = Path(__file__).resolve().parent / "web_static"
 
@@ -265,27 +421,27 @@ def _create_handler(state: WebServerState):
                     },
                 )
                 return
+            if route == "/api/sessions":
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "ok",
+                        "current_session_id": state.session.session_id,
+                        "sessions": _list_persisted_sessions(state.options.workspace),
+                    },
+                )
+                return
             if route == "/api/messages":
                 raw_limit = (query.get("limit") or ["80"])[0]
                 try:
                     limit = max(1, min(300, int(raw_limit)))
                 except ValueError:
                     limit = 80
-                messages = state.session.messages[-limit:]
-                data: list[dict] = []
-                for msg in messages:
-                    role = getattr(msg, "role", "unknown")
-                    text = ""
-                    if isinstance(msg, AssistantMessage):
-                        text = _extract_assistant_text(msg)
-                    elif hasattr(msg, "content"):
-                        content = getattr(msg, "content", "")
-                        if isinstance(content, str):
-                            text = content
-                        elif isinstance(content, list):
-                            text = "".join(block.text for block in content if isinstance(block, TextContent))
-                    data.append({"role": role, "text": (text or "").strip()})
+                data = _collect_api_messages(state.session, limit=limit)
                 self._send_json(HTTPStatus.OK, {"status": "ok", "messages": data})
+                return
+            if route == "/api/events/stream":
+                self._serve_events_stream()
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Not found"})
 
@@ -306,6 +462,9 @@ def _create_handler(state: WebServerState):
             if route == "/api/session/new":
                 self._handle_new_session()
                 return
+            if route == "/api/session/open":
+                self._handle_open_session()
+                return
             self._send_json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Not found"})
 
         def _build_prompt_response(self, final_assistant: AssistantMessage | None) -> dict:
@@ -314,6 +473,7 @@ def _create_handler(state: WebServerState):
                 "session_id": state.session.session_id,
                 "leaf_id": state.session.get_leaf_id(),
                 "reply": _build_reply_text(final_assistant),
+                "reply_timestamp": getattr(final_assistant, "timestamp", None),
                 "stop_reason": getattr(final_assistant, "stop_reason", None),
                 "error_message": getattr(final_assistant, "error_message", None),
                 "last_usage": state.session.last_usage,
@@ -385,6 +545,27 @@ def _create_handler(state: WebServerState):
                 state.replace_session(fresh)
             self._send_json(HTTPStatus.OK, {"status": "ok", "session_id": state.session.session_id, "leaf_id": state.session.get_leaf_id()})
 
+        def _handle_open_session(self) -> None:
+            try:
+                body = _safe_read_json(self)
+                session_id = str(body.get("session_id", "")).strip()
+                if not session_id:
+                    self._send_json(HTTPStatus.BAD_REQUEST, {"status": "error", "message": "session_id is required"})
+                    return
+                with state.lock:
+                    restored = state.create_fresh_session(session_id=session_id)
+                    state.replace_session(restored)
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "ok",
+                        "session_id": state.session.session_id,
+                        "leaf_id": state.session.get_leaf_id(),
+                    },
+                )
+            except ValueError as exc:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"status": "error", "message": str(exc)})
+
         def log_message(self, format: str, *args) -> None:  # noqa: A003
             return
 
@@ -408,6 +589,29 @@ def _create_handler(state: WebServerState):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _serve_events_stream(self) -> None:
+            client = state.add_stream_client()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            try:
+                hello = {"type": "stream_ready", "ts": int(time.time() * 1000)}
+                self.wfile.write(f"data: {json.dumps(hello, ensure_ascii=False)}\n\n".encode("utf-8"))
+                self.wfile.flush()
+                while True:
+                    try:
+                        payload = client.get(timeout=15)
+                        self.wfile.write(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+                    except queue.Empty:
+                        self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                return
+            finally:
+                state.remove_stream_client(client)
 
     return Handler
 
@@ -476,3 +680,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

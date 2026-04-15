@@ -143,6 +143,13 @@ h1 {
   color: var(--ink-soft);
 }
 
+.session-subtitle {
+  margin: 14px 0 8px;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
 .session-row {
   display: flex;
   gap: 10px;
@@ -183,6 +190,12 @@ select {
 .msg.agent {
   margin-right: auto;
   background: color-mix(in srgb, var(--agent-msg) 10%, white);
+}
+
+.msg.system {
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--accent) 12%, white);
+  border-style: dashed;
 }
 
 .msg-role {

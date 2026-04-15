@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -63,7 +64,9 @@ class StdioMCPClient:
             # Read response
             line = await asyncio.wait_for(proc.stdout.readline(), timeout=30)
             if not line:
-                raise RuntimeError("MCP server died during initialization")
+                stderr = await self._read_stderr_snippet(proc)
+                detail = f": {stderr}" if stderr else ""
+                raise RuntimeError(f"MCP server died during initialization{detail}")
             
             response = json.loads(line.decode())
             if "error" in response:
@@ -80,7 +83,7 @@ class StdioMCPClient:
         """Ensure MCP server process is running"""
         if self._proc is None or self._proc.returncode is not None:
             # Merge command and args
-            full_command = self.config.command + self.config.args
+            full_command = self._resolve_command(self.config.command + self.config.args)
             
             # Merge environment variables
             env = {**os.environ.copy(), **self.config.env}
@@ -97,6 +100,28 @@ class StdioMCPClient:
             await self._initialize()
             
         return self._proc
+
+    @staticmethod
+    def _resolve_command(command: list[str]) -> list[str]:
+        if not command:
+            return command
+        first = Path(command[0]).name.lower()
+        if first in {"python", "python.exe", "python3", "py", "py.exe"}:
+            return [sys.executable, *command[1:]]
+        return command
+
+    @staticmethod
+    async def _read_stderr_snippet(proc: asyncio.subprocess.Process, max_bytes: int = 4096) -> str:
+        if not proc.stderr:
+            return ""
+        try:
+            raw = await asyncio.wait_for(proc.stderr.read(max_bytes), timeout=0.3)
+        except Exception:
+            return ""
+        text = raw.decode(errors="ignore").strip()
+        if len(text) > 500:
+            return text[:500] + "...<truncated>"
+        return text
 
     async def call_tool(self, server: str, tool: str, arguments: dict[str, Any]) -> Any:
         """Call MCP server tool"""
@@ -128,8 +153,8 @@ class StdioMCPClient:
                 raise RuntimeError(f"MCP server timeout for tool {tool}")
 
             if not line:
-                stderr = await proc.stderr.read()
-                raise RuntimeError(f"MCP server died: {stderr.decode() if stderr else 'unknown'}")
+                stderr = await self._read_stderr_snippet(proc)
+                raise RuntimeError(f"MCP server died: {stderr or 'unknown'}")
 
             response = json.loads(line.decode())
             
@@ -160,7 +185,9 @@ class StdioMCPClient:
 
             line = await asyncio.wait_for(proc.stdout.readline(), timeout=30)
             if not line:
-                raise RuntimeError("MCP server died")
+                stderr = await self._read_stderr_snippet(proc)
+                detail = f": {stderr}" if stderr else ""
+                raise RuntimeError(f"MCP server died{detail}")
 
             response = json.loads(line.decode())
             return response.get("result", {}).get("tools", [])

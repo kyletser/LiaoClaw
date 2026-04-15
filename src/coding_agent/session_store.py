@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 """
-会话持久化存储。
-
-默认目录结构：
-.liaoclaw/sessions/<session_id>/
+婵炴潙鍚嬫穱娲儊娴犲绠板ù锝夘棑閻ｄ粙鏌涢弽銊уⅹ闁宦板姂瀹曟帡濡搁敐鍌氫壕?
+婵帗绋掗…鍫ヮ敇婵犳碍鍎庢い鏃囧亹缁夎法绱撴担瑙勫鞍闁诲寒鍨堕弫?.liaoclaw/sessions/<session_id>/
   - meta.json
   - context.jsonl
   - events.jsonl
@@ -142,8 +140,7 @@ class SessionStore:
 
     def append_session_message(self, message: Message) -> str:
         """
-        将消息写入 session tree（线性 parent 链），便于后续 fork/switch/branch。
-        """
+        闁诲繐绻愬Λ娆戠矓閻戣棄绠掓い鏍ㄨ壘閺呮悂鏌?session tree闂佹寧绋戦悧蹇涘吹鎼淬劌绠?parent 闂備胶鍋撻幏婵堟濮樿埖鏅悘鐐跺亹閳规帒霉濠婂啴顎楅柟顔筋殘缁?fork/switch/branch闂?        """
 
         lines = self._read_session_lines()
         header = lines[0] if lines and lines[0].get("type") == "session" else None
@@ -200,9 +197,16 @@ class SessionStore:
 
     def load_session_messages(self, *, leaf_id: str | None = None) -> list[Message]:
         """
-        从 session tree 恢复当前分支消息（默认使用 meta.leaf_id）。
+        娴?session tree 閹垹顦茶ぐ鎾冲閸掑棙鏁☉鍫熶紖閿涘牓绮拋銈勫▏閻?meta.leaf_id閿涘鈧?
         """
+        entries = self.load_session_message_entries(leaf_id=leaf_id)
+        return [message_from_dict(item["message"]) for item in entries if isinstance(item.get("message"), dict)]
 
+    def load_session_message_entries(self, *, leaf_id: str | None = None) -> list[dict[str, Any]]:
+        """
+        娴?session tree 閹垹顦茶ぐ鎾冲閸掑棙鏁惃鍕斧婵娼惄顕嗙礄閸?entry timestamp閿涘鈧?
+        鏉╂柨娲栨い鍝勭碍娑撶尨绱版禒搴㈢壌閸掓澘缍嬮崜?leaf閵?
+        """
         lines = self._read_session_lines()
         if not lines:
             return []
@@ -213,7 +217,6 @@ class SessionStore:
         meta = self.read_meta() or {}
         current = leaf_id or meta.get("leaf_id")
         if not isinstance(current, str) or current not in by_id:
-            # 回退到最后一条，兼容旧数据
             current = str(entries[-1].get("id"))
 
         chain: list[dict[str, Any]] = []
@@ -226,12 +229,19 @@ class SessionStore:
             current = parent_id if isinstance(parent_id, str) else None
 
         chain.reverse()
-        messages: list[Message] = []
+        out: list[dict[str, Any]] = []
         for entry in chain:
             msg_data = entry.get("message")
             if isinstance(msg_data, dict):
-                messages.append(message_from_dict(msg_data))
-        return messages
+                out.append(
+                    {
+                        "id": entry.get("id"),
+                        "parent_id": entry.get("parent_id"),
+                        "timestamp": entry.get("timestamp"),
+                        "message": msg_data,
+                    }
+                )
+        return out
 
     def list_entry_ids(self) -> list[str]:
         lines = self._read_session_lines()
@@ -241,13 +251,11 @@ class SessionStore:
         meta = self.read_meta() or {}
         leaf = meta.get("leaf_id")
         return leaf if isinstance(leaf, str) else None
-
     def list_entries(self) -> list[dict[str, Any]]:
         """
-        返回扁平 entry 列表，并补充导航信息：
-        - depth: 根深度为 0
-        - is_leaf: 是否当前叶子
-        - preview: 文本摘要
+        闁哄鏅滈弻銊ッ洪弽顓炵濞达絾鎮傞幐?entry 闂佸憡甯楅〃澶愬Υ閸愵喗鏅悘鐐测偓鐔风彲闁荤偞绋忛崕閬嶅储閺嶎偀鍋撴担鍐棈闁糕晛鎳忕粚閬嶅焺閸愌呯闂?        - depth: 闂佸搫绉烽～澶屾崲娴ｈ鍎熼柨鏃囧劵缁€?0
+        - is_leaf: 闂佸搫瀚烽崹浼村箚娴ｅ浜归柟鎯у暱椤ゅ懘鏌涘▎鎺撶【闁?
+        - preview: 闂佸搫鍊稿ú锕€锕㈡导鏉戠婵☆垱顑欏ú?
         """
 
         lines = self._read_session_lines()
@@ -280,8 +288,7 @@ class SessionStore:
 
     def get_entry_path(self, entry_id: str) -> list[str]:
         """
-        返回从根到指定 entry 的 id 路径。
-        """
+        闁哄鏅滈弻銊ッ洪弽銊ь浄閹兼番鍨绘竟宀勬煕閹烘柨顣奸悗鍨皑閳?entry 闂?id 闁荤姳璀﹂崹鎵閻愬搫违?        """
 
         lines = self._read_session_lines()
         by_id = {
@@ -314,9 +321,7 @@ class SessionStore:
 
     def get_session_tree(self) -> list[dict[str, Any]]:
         """
-        返回 session 树结构（按 parent_id 组织）。
-        每个节点形如：
-        {
+        闁哄鏅滈弻銊ッ?session 闂佸搫绉甸崹鍦垝閵娾晛鍑犻柛鏇炲缁€鍕煙?parent_id 缂傚倷绀佺€氼喚鍒掗幇鐗堟櫖濠㈣泛鐗冮崑?        濠殿噯绲界换瀣煂濠婂牊鍤嶉柛灞剧矊娴狀垳鎲搁懜顒€鐏╂い鈹洦鏅?        {
           "id": "...",
           "parent_id": "...|None",
           "timestamp": "...",
@@ -389,8 +394,7 @@ class SessionStore:
         from_entry_id: str | None = None,
     ) -> "SessionStore":
         """
-        基于当前会话分支创建新会话（fork）。
-        """
+        闂佺硶鏅炲銊ц姳椤掑啨浜归柟鎯у暱椤ゅ懎霉閸忛棿浜㈤柣锔跨矙瀹曟岸宕卞Ο缁樻闂佸憡甯楃粙鎴犵磽閹捐妫樺Λ棰佽兌缁愭鎮归崶銊х缂佽鲸鐛昽rk闂佹寧绋戦ˇ顓㈠焵?        """
 
         target = SessionStore(self.workspace_dir, new_session_id)
         meta = self.read_meta() or {}

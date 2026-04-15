@@ -15,10 +15,35 @@ const els = {
   entrySelect: document.getElementById("entrySelect"),
   switchEntryBtn: document.getElementById("switchEntryBtn"),
   reloadEntriesBtn: document.getElementById("reloadEntriesBtn"),
+  historySessionSelect: document.getElementById("historySessionSelect"),
+  openHistorySessionBtn: document.getElementById("openHistorySessionBtn"),
+  reloadSessionsBtn: document.getElementById("reloadSessionsBtn"),
   msgTpl: document.getElementById("msgTpl"),
 };
 
 const MAX_RENDER_MESSAGES = 200;
+let eventStream = null;
+
+function formatTimestamp(value) {
+  let d = null;
+  if (typeof value === "number") {
+    d = new Date(value);
+  } else if (typeof value === "string" && value.trim()) {
+    d = new Date(value);
+  }
+  if (!d || Number.isNaN(d.getTime())) {
+    d = new Date();
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}:${pad(d.getSeconds())}`;
+}
+
+function formatMessageWithTimestamp(text, timestamp) {
+  const body = String(text || "").trim() || "(empty)";
+  return `${body}\n\n[${formatTimestamp(timestamp)}]`;
+}
 
 function smoothScrollToBottom() {
   requestAnimationFrame(() => {
@@ -26,11 +51,14 @@ function smoothScrollToBottom() {
   });
 }
 
-function addMessage(role, text) {
+function addMessage(role, text, options = {}) {
   const node = els.msgTpl.content.firstElementChild.cloneNode(true);
-  node.classList.add(role === "user" ? "user" : "agent");
-  node.querySelector(".msg-role").textContent = role === "user" ? "用户" : "助手";
-  node.querySelector(".msg-body").textContent = text || "（空内容）";
+  const normalizedRole = role === "user" || role === "assistant" || role === "system" ? role : "assistant";
+  node.classList.add(normalizedRole === "user" ? "user" : normalizedRole === "system" ? "system" : "agent");
+  const roleLabel = normalizedRole === "user" ? "User" : normalizedRole === "system" ? "System" : "Assistant";
+  node.querySelector(".msg-role").textContent = roleLabel;
+  node.querySelector(".msg-body").textContent = formatMessageWithTimestamp(text, options.timestamp);
+
   els.chatLog.appendChild(node);
   while (els.chatLog.children.length > MAX_RENDER_MESSAGES) {
     els.chatLog.removeChild(els.chatLog.firstElementChild);
@@ -43,7 +71,7 @@ function renderEntries(entries, leafId) {
   if (!entries || entries.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "暂无分支";
+    option.textContent = "No branches";
     els.entrySelect.appendChild(option);
     return;
   }
@@ -61,36 +89,149 @@ function renderEntries(entries, leafId) {
   }
 }
 
+function renderSessions(sessions, currentSessionId) {
+  els.historySessionSelect.innerHTML = "";
+  if (!sessions || sessions.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No sessions";
+    els.historySessionSelect.appendChild(option);
+    return;
+  }
+
+  for (const item of sessions) {
+    const option = document.createElement("option");
+    option.value = item.session_id;
+    const mark = item.session_id === currentSessionId ? " *" : "";
+    const updatedAt = item.updated_at ? formatTimestamp(item.updated_at) : "unknown";
+    const count = Number(item.message_count || 0);
+    option.textContent = `${item.session_id}${mark} | ${updatedAt} | ${count} msgs`;
+    if (item.session_id === currentSessionId) {
+      option.selected = true;
+    }
+    els.historySessionSelect.appendChild(option);
+  }
+}
+
 function setBusy(busy) {
   els.sendBtn.disabled = busy;
   els.promptInput.disabled = busy;
-  els.sendBtn.textContent = busy ? "发送中..." : "发送";
+  els.sendBtn.textContent = busy ? "Sending..." : "Send";
+}
+
+function normalizeHistoryRole(item) {
+  const role = String(item?.role || "");
+  if (role === "user" || role === "assistant") {
+    return role;
+  }
+  return "system";
+}
+
+function normalizeHistoryText(item) {
+  const role = String(item?.role || "");
+  const text = String(item?.text || "");
+  if (role === "toolResult") {
+    return `[toolResult] ${text}`;
+  }
+  return text;
+}
+
+function renderMessages(messages) {
+  els.chatLog.innerHTML = "";
+  for (const item of messages || []) {
+    addMessage(normalizeHistoryRole(item), normalizeHistoryText(item), { timestamp: item.timestamp });
+  }
+}
+
+function handleStreamEvent(payload) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const ts = payload.timestamp;
+  const type = payload.type;
+  if (type === "tool_execution_start") {
+    const toolName = payload.toolName || "unknown";
+    addMessage("system", `Tool started: ${toolName}`, { timestamp: ts });
+    return;
+  }
+  if (type === "tool_execution_end") {
+    const toolName = payload.toolName || "unknown";
+    addMessage("system", `Tool finished: ${toolName}`, { timestamp: ts });
+    return;
+  }
+  if (type === "auto_retry_start") {
+    const attempt = payload.attempt || "?";
+    const maxAttempts = payload.max_attempts || "?";
+    const delayMs = payload.delay_ms || 0;
+    addMessage("system", `Auto retry (${attempt}/${maxAttempts}), waiting ${delayMs}ms`, { timestamp: ts });
+    return;
+  }
+  if (type === "context_compacted") {
+    addMessage("system", "Context compacted to avoid overflow.", { timestamp: ts });
+  }
+}
+
+function connectEventStream() {
+  if (eventStream) {
+    eventStream.close();
+  }
+  eventStream = new EventSource("/api/events/stream");
+  eventStream.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      handleStreamEvent(payload);
+    } catch (_) {
+      // ignore malformed stream event
+    }
+  };
+  eventStream.onerror = () => {
+    // EventSource auto-reconnects by default.
+  };
 }
 
 async function refreshState() {
   const res = await fetch("/api/state");
   const data = await res.json();
   if (data.status !== "ok") {
-    throw new Error(data.message || "读取状态失败");
+    throw new Error(data.message || "Failed to load state");
   }
   els.sessionId.textContent = data.session_id || "-";
-  els.leafId.textContent = `分支: ${data.leaf_id || "-"}`;
+  els.leafId.textContent = `Leaf: ${data.leaf_id || "-"}`;
   els.messageCount.textContent = String(data.message_count || 0);
   const displayTokens = data.tokens?.display_total_tokens || 0;
   els.tokenCount.textContent = String(displayTokens);
-  const source = data.tokens?.token_source === "usage" ? "模型统计" : "估算";
+  const source = data.tokens?.token_source === "usage" ? "usage" : "estimate";
   const actual = data.tokens?.actual_total_tokens || 0;
   const estimated = data.tokens?.estimated_total_tokens || 0;
-  els.tokenMeta.textContent = `当前会话累计消耗（来源: ${source}，usage=${actual}，estimate=${estimated}）`;
+  els.tokenMeta.textContent = `source=${source}, usage=${actual}, estimate=${estimated}`;
+  return data;
 }
 
 async function loadEntries() {
   const res = await fetch("/api/session/entries");
   const data = await res.json();
   if (!res.ok || data.status !== "ok") {
-    throw new Error(data.message || "读取分支失败");
+    throw new Error(data.message || "Failed to load branches");
   }
   renderEntries(data.entries || [], data.leaf_id || "");
+}
+
+async function loadSessions() {
+  const res = await fetch("/api/sessions");
+  const data = await res.json();
+  if (!res.ok || data.status !== "ok") {
+    throw new Error(data.message || "Failed to load sessions");
+  }
+  renderSessions(data.sessions || [], data.current_session_id || "");
+}
+
+async function fetchMessages(limit = 120) {
+  const messagesResp = await fetch(`/api/messages?limit=${limit}`);
+  const messagesData = await messagesResp.json();
+  if (!messagesResp.ok || messagesData.status !== "ok") {
+    throw new Error(messagesData.message || "Failed to load messages");
+  }
+  return messagesData.messages || [];
 }
 
 async function postJson(url, payload = {}) {
@@ -101,7 +242,7 @@ async function postJson(url, payload = {}) {
   });
   const data = await res.json();
   if (!res.ok || data.status !== "ok") {
-    throw new Error(data.message || "请求失败");
+    throw new Error(data.message || "Request failed");
   }
   return data;
 }
@@ -117,16 +258,17 @@ els.chatForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  addMessage("user", text);
+  addMessage("user", text, { timestamp: Date.now() });
   els.promptInput.value = "";
   setBusy(true);
   try {
     const result = await sendPrompt(text);
-    addMessage("assistant", result.reply || "助手没有返回可展示内容");
+    addMessage("assistant", result.reply || "Assistant returned no text", { timestamp: result.reply_timestamp });
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   } finally {
     setBusy(false);
     els.promptInput.focus();
@@ -137,8 +279,9 @@ els.refreshBtn.addEventListener("click", async () => {
   try {
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   }
 });
 
@@ -146,11 +289,12 @@ els.continueBtn.addEventListener("click", async () => {
   try {
     setBusy(true);
     const result = await postJson("/api/continue");
-    addMessage("assistant", result.reply || "助手没有返回可展示内容");
+    addMessage("assistant", result.reply || "Assistant returned no text", { timestamp: result.reply_timestamp });
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   } finally {
     setBusy(false);
   }
@@ -160,11 +304,12 @@ els.newSessionBtn.addEventListener("click", async () => {
   try {
     await postJson("/api/session/new");
     els.chatLog.innerHTML = "";
-    addMessage("assistant", "已创建新会话，历史上下文已清空。");
+    addMessage("assistant", "New session created. Context cleared.", { timestamp: Date.now() });
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   }
 });
 
@@ -172,37 +317,30 @@ els.forkBtn.addEventListener("click", async () => {
   try {
     const entryId = els.entrySelect.value || undefined;
     await postJson("/api/session/fork", entryId ? { entry_id: entryId } : {});
-    addMessage("assistant", "已基于当前分支创建新会话。" );
+    addMessage("assistant", "Session forked from current branch.", { timestamp: Date.now() });
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   }
 });
 
 els.switchEntryBtn.addEventListener("click", async () => {
   const entryId = els.entrySelect.value;
   if (!entryId) {
-    addMessage("assistant", "请先选择一个分支。" );
+    addMessage("assistant", "Please select a branch first.", { timestamp: Date.now() });
     return;
   }
   try {
     await postJson("/api/session/switch", { entry_id: entryId });
-    const messagesResp = await fetch("/api/messages?limit=120");
-    const messagesData = await messagesResp.json();
-    if (!messagesResp.ok || messagesData.status !== "ok") {
-      throw new Error(messagesData.message || "读取消息失败");
-    }
-    els.chatLog.innerHTML = "";
-    for (const item of messagesData.messages || []) {
-      if (item.role === "user" || item.role === "assistant") {
-        addMessage(item.role, item.text);
-      }
-    }
+    const messages = await fetchMessages(200);
+    renderMessages(messages);
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   }
 });
 
@@ -210,16 +348,50 @@ els.reloadEntriesBtn.addEventListener("click", async () => {
   try {
     await loadEntries();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
+  }
+});
+
+els.openHistorySessionBtn.addEventListener("click", async () => {
+  const sessionId = els.historySessionSelect.value;
+  if (!sessionId) {
+    addMessage("assistant", "Please select a session first.", { timestamp: Date.now() });
+    return;
+  }
+  try {
+    await postJson("/api/session/open", { session_id: sessionId });
+    const messages = await fetchMessages(200);
+    renderMessages(messages);
+    await refreshState();
+    await loadEntries();
+    await loadSessions();
+  } catch (error) {
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
+  }
+});
+
+els.reloadSessionsBtn.addEventListener("click", async () => {
+  try {
+    await loadSessions();
+  } catch (error) {
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
+  }
+});
+
+window.addEventListener("beforeunload", () => {
+  if (eventStream) {
+    eventStream.close();
   }
 });
 
 (async function init() {
-  addMessage("assistant", "网页控制台已就绪，可以开始提问。\n支持继续生成、切换分支、分叉会话和新建会话。" );
+  addMessage("assistant", "Web console is ready. You can chat now.", { timestamp: Date.now() });
   try {
+    connectEventStream();
     await refreshState();
     await loadEntries();
+    await loadSessions();
   } catch (error) {
-    addMessage("assistant", `错误：${error.message}`);
+    addMessage("assistant", `Error: ${error.message}`, { timestamp: Date.now() });
   }
 })();

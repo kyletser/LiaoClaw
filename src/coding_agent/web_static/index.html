@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -33,25 +33,31 @@
         <article class="card stat">
           <h2>累计 Token</h2>
           <p id="tokenCount" class="stat-main">0</p>
-           <p class="stat-sub" id="tokenMeta">当前会话累计消耗</p>
+          <p class="stat-sub" id="tokenMeta">当前会话累计消耗</p>
         </article>
       </section>
 
-       <section class="card reveal toolbar">
-         <button id="continueBtn" type="button">继续生成</button>
-         <button id="newSessionBtn" type="button" class="ghost">新会话</button>
-         <button id="forkBtn" type="button" class="ghost">分叉会话</button>
-         <button id="refreshBtn" type="button" class="ghost">刷新状态</button>
-       </section>
+      <section class="card reveal toolbar">
+        <button id="continueBtn" type="button">继续生成</button>
+        <button id="newSessionBtn" type="button" class="ghost">新会话</button>
+        <button id="forkBtn" type="button" class="ghost">分叉会话</button>
+        <button id="refreshBtn" type="button" class="ghost">刷新状态</button>
+      </section>
 
-       <section class="card reveal session-panel">
-         <h2>会话分支</h2>
-         <div class="session-row">
-           <select id="entrySelect"></select>
-           <button id="switchEntryBtn" type="button" class="ghost">切换到选中分支</button>
-           <button id="reloadEntriesBtn" type="button" class="ghost">刷新分支</button>
-         </div>
-       </section>
+      <section class="card reveal session-panel">
+        <h2>会话分支</h2>
+        <div class="session-row">
+          <select id="entrySelect"></select>
+          <button id="switchEntryBtn" type="button" class="ghost">切换到选中分支</button>
+          <button id="reloadEntriesBtn" type="button" class="ghost">刷新分支</button>
+        </div>
+        <p class="session-subtitle">历史会话</p>
+        <div class="session-row">
+          <select id="historySessionSelect"></select>
+          <button id="openHistorySessionBtn" type="button" class="ghost">打开会话</button>
+          <button id="reloadSessionsBtn" type="button" class="ghost">刷新会话</button>
+        </div>
+      </section>
 
       <section class="card chat reveal">
         <div id="chatLog" class="chat-log" aria-live="polite"></div>
