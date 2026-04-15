@@ -5,7 +5,7 @@ coding_agent 命令行入口。
 
 示例：
 python -m coding_agent --mode print --prompt "你好"
-python -m coding_agent --mode interactive --provider anthropic --model-id glm-4.7
+python -m coding_agent --mode interactive --provider anthropic --model-id glm-4.5-air
 """
 
 import argparse

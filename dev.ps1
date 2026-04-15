@@ -36,7 +36,7 @@ if (-not $installed) {
 }
 
 $provider = if ($env:LIAOCLAW_PROVIDER) { $env:LIAOCLAW_PROVIDER } else { "anthropic" }
-$modelId  = if ($env:LIAOCLAW_MODEL_ID) { $env:LIAOCLAW_MODEL_ID } else { "claude-sonnet-4-5" }
+$modelId  = if ($env:LIAOCLAW_MODEL_ID) { $env:LIAOCLAW_MODEL_ID } else { "glm-4.5-air" }
 
 if ($Mode -eq "im") {
     $appId     = $env:FEISHU_APP_ID

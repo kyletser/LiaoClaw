@@ -103,6 +103,11 @@ liaoclaw-web --provider anthropic --model-id glm-4.5-air --host 127.0.0.1 --port
 pytest tests/ -v
 ```
 
+### 5. 给别人直接运行（交付手册）
+
+如果你要把整个项目直接发给别人，建议对方按这份手册操作：  
+`docs/05_交付与运行/01_项目交付运行手册.md`
+
 ## 项目结构一览
 
 ```

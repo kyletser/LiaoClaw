@@ -12,6 +12,7 @@ import json
 import mimetypes
 import os
 import re
+import sys
 import threading
 import queue
 import time
@@ -617,6 +618,16 @@ def _create_handler(state: WebServerState):
 
 
 def create_server(options: WebServerOptions):
+    class QuietThreadingHTTPServer(ThreadingHTTPServer):
+        def handle_error(self, request, client_address) -> None:  # type: ignore[override]
+            _ = request, client_address
+            _, exc, _ = sys.exc_info()
+            if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError)):
+                return
+            if isinstance(exc, OSError) and getattr(exc, "winerror", None) == 10053:
+                return
+            return super().handle_error(request, client_address)
+
     session = create_agent_session(
         CreateAgentSessionOptions(
             workspace_dir=options.workspace,
@@ -632,7 +643,7 @@ def create_server(options: WebServerOptions):
         )
     )
     state = WebServerState(session=session, options=options)
-    server = ThreadingHTTPServer((options.host, options.port), _create_handler(state))
+    server = QuietThreadingHTTPServer((options.host, options.port), _create_handler(state))
     return server, session
 
 

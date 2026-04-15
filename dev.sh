@@ -11,7 +11,7 @@
 #
 # 模型配置:
 #   LIAOCLAW_PROVIDER=anthropic                  # 默认 anthropic
-#   LIAOCLAW_MODEL_ID=claude-sonnet-4-5          # 默认 claude-sonnet-4-5
+#   LIAOCLAW_MODEL_ID=glm-4.5-air                # 默认 glm-4.5-air
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,7 +33,7 @@ PORT="${PORT:-8787}"
 WORKSPACE="${WORKSPACE:-.}"
 LOG_LEVEL="${LOG_LEVEL:-debug}"
 PROVIDER="${LIAOCLAW_PROVIDER:-anthropic}"
-MODEL_ID="${LIAOCLAW_MODEL_ID:-claude-sonnet-4-5}"
+MODEL_ID="${LIAOCLAW_MODEL_ID:-glm-4.5-air}"
 
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
