@@ -41,8 +41,12 @@ function formatTimestamp(value) {
 }
 
 function formatMessageWithTimestamp(text, timestamp) {
-  const body = String(text || "").trim() || "(empty)";
+  const body = String(text || "").trim();
   return `${body}\n\n[${formatTimestamp(timestamp)}]`;
+}
+
+function hasRenderableText(text) {
+  return String(text || "").trim().length > 0;
 }
 
 function smoothScrollToBottom() {
@@ -52,10 +56,29 @@ function smoothScrollToBottom() {
 }
 
 function addMessage(role, text, options = {}) {
+  if (!hasRenderableText(text)) {
+    return;
+  }
   const node = els.msgTpl.content.firstElementChild.cloneNode(true);
-  const normalizedRole = role === "user" || role === "assistant" || role === "system" ? role : "assistant";
-  node.classList.add(normalizedRole === "user" ? "user" : normalizedRole === "system" ? "system" : "agent");
-  const roleLabel = normalizedRole === "user" ? "User" : normalizedRole === "system" ? "System" : "Assistant";
+  const normalizedRole =
+    role === "user" || role === "assistant" || role === "system" || role === "tool" ? role : "assistant";
+  const className =
+    normalizedRole === "user"
+      ? "user"
+      : normalizedRole === "system"
+      ? "system"
+      : normalizedRole === "tool"
+      ? "tool"
+      : "agent";
+  node.classList.add(className);
+  const roleLabel =
+    normalizedRole === "user"
+      ? "User"
+      : normalizedRole === "system"
+      ? "System"
+      : normalizedRole === "tool"
+      ? "Tool"
+      : "Assistant";
   node.querySelector(".msg-role").textContent = roleLabel;
   node.querySelector(".msg-body").textContent = formatMessageWithTimestamp(text, options.timestamp);
 
@@ -124,6 +147,18 @@ function normalizeHistoryRole(item) {
   if (role === "user" || role === "assistant") {
     return role;
   }
+  if (role === "toolResult") {
+    return "tool";
+  }
+  const text = String(item?.text || "").trim();
+  if (
+    text.startsWith("Tool started:") ||
+    text.startsWith("Tool finished:") ||
+    text.startsWith("Auto retry (") ||
+    text === "Context compacted to avoid overflow."
+  ) {
+    return "tool";
+  }
   return "system";
 }
 
@@ -139,7 +174,12 @@ function normalizeHistoryText(item) {
 function renderMessages(messages) {
   els.chatLog.innerHTML = "";
   for (const item of messages || []) {
-    addMessage(normalizeHistoryRole(item), normalizeHistoryText(item), { timestamp: item.timestamp });
+    const role = normalizeHistoryRole(item);
+    const text = normalizeHistoryText(item);
+    if (!hasRenderableText(text)) {
+      continue;
+    }
+    addMessage(role, text, { timestamp: item.timestamp });
   }
 }
 
@@ -151,23 +191,23 @@ function handleStreamEvent(payload) {
   const type = payload.type;
   if (type === "tool_execution_start") {
     const toolName = payload.toolName || "unknown";
-    addMessage("system", `Tool started: ${toolName}`, { timestamp: ts });
+    addMessage("tool", `Tool started: ${toolName}`, { timestamp: ts });
     return;
   }
   if (type === "tool_execution_end") {
     const toolName = payload.toolName || "unknown";
-    addMessage("system", `Tool finished: ${toolName}`, { timestamp: ts });
+    addMessage("tool", `Tool finished: ${toolName}`, { timestamp: ts });
     return;
   }
   if (type === "auto_retry_start") {
     const attempt = payload.attempt || "?";
     const maxAttempts = payload.max_attempts || "?";
     const delayMs = payload.delay_ms || 0;
-    addMessage("system", `Auto retry (${attempt}/${maxAttempts}), waiting ${delayMs}ms`, { timestamp: ts });
+    addMessage("tool", `Auto retry (${attempt}/${maxAttempts}), waiting ${delayMs}ms`, { timestamp: ts });
     return;
   }
   if (type === "context_compacted") {
-    addMessage("system", "Context compacted to avoid overflow.", { timestamp: ts });
+    addMessage("tool", "Context compacted to avoid overflow.", { timestamp: ts });
   }
 }
 

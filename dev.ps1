@@ -3,8 +3,8 @@
 LiaoClaw Windows 本地调试启动脚本
 .DESCRIPTION
 使用方式:
-  .\dev.ps1                       # 默认 IM webhook 模式
-  .\dev.ps1 -Mode cli             # CLI 交互模式
+   liaoclaw-web                    # web模式，浏览器访问 http://127.0.0.1:8787
+  .\dev.ps1 -Mode cli                   # CLI 交互模式
   .\dev.ps1 -Mode im -Transport longconn  # 飞书长连接模式
 #>
 param(
