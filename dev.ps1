@@ -8,6 +8,7 @@ LiaoClaw Windows 本地调试启动脚本
   .\dev.ps1 -Mode im -Transport longconn  # 飞书长连接模式
 #>
 param(
+    [ValidateSet("im", "cli", "web")]
     [string]$Mode       = "im",
     [string]$Transport  = "webhook",
     [string]$ListenHost = "127.0.0.1",
@@ -18,21 +19,32 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $scriptRoot) {
+    $scriptRoot = (Get-Location).Path
+}
+
 # 加载 .env.ps1（如果存在）
-$envFile = Join-Path $PSScriptRoot ".env.ps1"
+$envFile = Join-Path $scriptRoot ".env.ps1"
 if (Test-Path $envFile) {
     Write-Host "[dev] Loading $envFile ..." -ForegroundColor Cyan
     . $envFile
 }
 
 # 确保在项目根目录
-Set-Location $PSScriptRoot
+Set-Location $scriptRoot
+
+# 统一使用虚拟环境 Python（若存在），避免 python/pip 指向不一致。
+$pythonExe = "python"
+if (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
+    $pythonExe = (Resolve-Path -LiteralPath ".\.venv\Scripts\python.exe").Path
+}
 
 # 确保已安装（开发模式）
-$installed = pip show liaoclaw 2>$null
-if (-not $installed) {
+& $pythonExe -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('coding_agent') else 1)"
+if ($LASTEXITCODE -ne 0) {
     Write-Host "[dev] Installing liaoclaw in editable mode ..." -ForegroundColor Yellow
-    pip install -e ".[dev]"
+    & $pythonExe -m pip install -e ".[dev]"
 }
 
 $provider = if ($env:LIAOCLAW_PROVIDER) { $env:LIAOCLAW_PROVIDER } else { "anthropic" }
@@ -68,9 +80,9 @@ if ($Mode -eq "im") {
 
     Write-Host "[dev] Starting IM service ($Transport) on ${ListenHost}:${Port} ..." -ForegroundColor Green
     Write-Host "[dev] Provider: $provider | Model: $modelId" -ForegroundColor Green
-    python @pyArgs
+    & $pythonExe @pyArgs
 
-} else {
+} elseif ($Mode -eq "cli") {
     $pyArgs = @(
         "-m", "coding_agent",
         "--mode", "interactive",
@@ -81,5 +93,19 @@ if ($Mode -eq "im") {
 
     Write-Host "[dev] Starting CLI interactive mode ..." -ForegroundColor Green
     Write-Host "[dev] Provider: $provider | Model: $modelId" -ForegroundColor Green
-    python @pyArgs
+    & $pythonExe @pyArgs
+    
+} else {
+    $pyArgs = @(
+        "-m", "coding_agent.web",
+        "--workspace", $Workspace,
+        "--provider", $provider,
+        "--model-id", $modelId,
+        "--host", $ListenHost,
+        "--port", $Port
+    )
+
+    Write-Host "[dev] Starting Web mode on ${ListenHost}:${Port} ..." -ForegroundColor Green
+    Write-Host "[dev] Provider: $provider | Model: $modelId" -ForegroundColor Green
+    & $pythonExe @pyArgs
 }
